@@ -1,5 +1,5 @@
-# --- Toggle: run synaesthete-only covariate analysis ---
-run_syn_covariate_analysis <- TRUE  # Change to TRUE to run separate syn-only analysis
+# --- Toggle: H1 vs H4 ---
+include_relatives <- FALSE  # FALSE = H1 (Syn vs Con); TRUE = H4 (Syn vs Rel vs Con)
 
 # --- Load libraries ---
 library(dplyr)
@@ -14,7 +14,7 @@ source("<PATH_TO_REPO>/Preprocessing/exclusions_function.R")
 # --- File paths ---
 syn_path <- "<PATH_TO_DATA>/Synaesthetes/STM.csv"
 con_path <- "<PATH_TO_DATA>/Controls/STM.csv"
-syn_types_path <- "<PATH_TO_PARTICIPANTS>/observation_list.xlsx"
+rel_path <- "<PATH_TO_DATA>/Relatives/STM.csv"
 
 # --- Load & label data ---
 syn_data <- read.csv(syn_path) %>% mutate(group = "synaesthete")
@@ -23,21 +23,13 @@ syn_data <- filter_exclusions(syn_data)
 con_data <- read.csv(con_path) %>% mutate(group = "control")
 con_data <- filter_exclusions(con_data)
 
+rel_data <- read.csv(rel_path) %>% mutate(group = "relative")
+rel_data <- filter_exclusions(rel_data)
+
 # Ensure participant_id is character across all datasets
 syn_data$participant_id <- as.character(syn_data$participant_id)
 con_data$participant_id <- as.character(con_data$participant_id)
-
-# --- Load covariate data (if needed) ---
-syn_types_data <- NULL
-if (run_syn_covariate_analysis) {
-  syn_types_data <- read_excel(syn_types_path) %>%
-    select(participant_id, syn_num_types) %>%
-    mutate(participant_id = as.character(participant_id))
-  
-  cat("Loaded syn_types data for", nrow(syn_types_data), "participants\n")
-  cat("syn_num_types range:", min(syn_types_data$syn_num_types, na.rm = TRUE), "to", 
-      max(syn_types_data$syn_num_types, na.rm = TRUE), "\n\n")
-}
+rel_data$participant_id <- as.character(rel_data$participant_id)
 
 # --- Participant-level averages ---
 syn_averages <- syn_data %>%
@@ -58,8 +50,29 @@ con_averages <- con_data %>%
   ) %>%
   mutate(group = "control")
 
+rel_averages <- rel_data %>%
+  group_by(participant_id, load_n) %>%
+  summarise(
+    avg_colour_angle_abs_deviation = mean(colour_angle_abs_deviation, na.rm = TRUE),
+    avg_location_angle_abs_deviation = mean(location_angle_abs_deviation, na.rm = TRUE),
+    .groups = 'drop'
+  ) %>%
+  mutate(group = "relative")
+
 # --- Combine groups ---
-combined_averages <- bind_rows(syn_averages, con_averages)
+combined_averages <- bind_rows(syn_averages, rel_averages, con_averages)
+
+# --- Apply H1/H4 toggle ---
+if (!include_relatives) {
+  combined_averages <- combined_averages %>%
+    filter(group %in% c("synaesthete", "control"))
+}
+
+# --- Set group as ordered factor ---
+combined_averages$group <- factor(
+  combined_averages$group,
+  levels = c("control", "relative", "synaesthete")
+)
 
 # --- Get initial participant count ---
 initial_participants <- length(unique(combined_averages$participant_id))
@@ -115,7 +128,7 @@ print(group_counts_final)
 cat("\n")
 
 # Convert factors for ANOVA
-z_score_data$group <- as.factor(z_score_data$group)
+z_score_data$group <- factor(z_score_data$group, levels = c("control", "relative", "synaesthete"))
 z_score_data$load_n <- as.factor(z_score_data$load_n)
 z_score_data$participant_id <- as.factor(z_score_data$participant_id)
 
@@ -123,7 +136,12 @@ z_score_data$participant_id <- as.factor(z_score_data$participant_id)
 # MAIN ANALYSIS (with load_n as within-subject factor)
 # ===============================================================================
 
-cat("=== MAIN ANALYSIS: 2 Groups (Synaesthetes vs Controls) with Load as Within-Subject Factor ===\n")
+cat(
+  if (include_relatives)
+    "=== MAIN ANALYSIS: 3 Groups (Synaesthetes vs Relatives vs Controls) with Load as Within-Subject Factor ===\n"
+  else
+    "=== MAIN ANALYSIS: 2 Groups (Synaesthetes vs Controls) with Load as Within-Subject Factor ===\n"
+)
 
 # --- Mixed ANOVA for colour angle deviation ---
 cat("\n=== Mixed ANOVA for Colour Angle Deviation ===\n")
@@ -230,90 +248,6 @@ summary_stats_main <- z_score_data %>%
 print(summary_stats_main)
 
 # ===============================================================================
-# SYNAESTHETE-ONLY COVARIATE ANALYSIS (separate analysis)
-# ===============================================================================
-
-if (run_syn_covariate_analysis && !is.null(syn_types_data)) {
-  
-  cat("\n\n================================================================================\n")
-  cat("=== SEPARATE ANALYSIS: Synaesthetes Only with syn_num_types Covariate ===\n")
-  cat("================================================================================\n")
-  
-  # Filter to synaesthetes only from the already z-score filtered data
-  syn_only_data <- z_score_data %>%
-    filter(group == "synaesthete")
-  
-  # Add covariate data
-  syn_only_data <- left_join(syn_only_data, syn_types_data, by = "participant_id")
-  
-  # Remove missing values
-  syn_only_clean <- syn_only_data[complete.cases(syn_only_data), ]
-  
-  cat("Synaesthetes included in covariate analysis:", nrow(syn_only_clean), "\n")
-  cat("syn_num_types range:", min(syn_only_clean$syn_num_types), "to", max(syn_only_clean$syn_num_types), "\n\n")
-  
-  # Mixed ANCOVA for colour with load as within-subject factor
-  cat("=== Synaesthete Colour Mixed ANCOVA (with syn_num_types covariate and Load) ===\n")
-  syn_colour_model <- aov(avg_colour_angle_abs_deviation ~ syn_num_types * load_n + Error(participant_id/load_n), 
-                         data = syn_only_clean)
-  print(summary(syn_colour_model))
-  
-  # Mixed ANCOVA for location with load as within-subject factor
-  cat("\n=== Synaesthete Location Mixed ANCOVA (with syn_num_types covariate and Load) ===\n")
-  syn_location_model <- aov(avg_location_angle_abs_deviation ~ syn_num_types * load_n + Error(participant_id/load_n), 
-                            data = syn_only_clean)
-  print(summary(syn_location_model))
-  
-  # Show covariate effects using emtrends
-  tryCatch({
-    cat("\n=== Covariate (syn_num_types) Effect on Colour ===\n")
-    syn_colour_trend <- emtrends(aov(avg_colour_angle_abs_deviation ~ syn_num_types, data = syn_only_clean), 
-                                ~ 1, var = "syn_num_types")
-    print(syn_colour_trend)
-    
-    cat("\n=== Covariate (syn_num_types) Effect on Location ===\n")
-    syn_location_trend <- emtrends(aov(avg_location_angle_abs_deviation ~ syn_num_types, data = syn_only_clean), 
-                                   ~ 1, var = "syn_num_types")
-    print(syn_location_trend)
-  }, error = function(e) {
-    cat("Error with emtrends:", e$message, "\n")
-  })
-  
-  # --- Data summary for synaesthete analysis ---
-  cat("\n=== Data Summary for Synaesthete Covariate Analysis by Load ===\n")
-  summary_stats_syn <- syn_only_clean %>%
-    group_by(load_n) %>%
-    summarise(
-      n = n(),
-      colour_mean = mean(avg_colour_angle_abs_deviation, na.rm = TRUE),
-      colour_sd = sd(avg_colour_angle_abs_deviation, na.rm = TRUE),
-      location_mean = mean(avg_location_angle_abs_deviation, na.rm = TRUE),
-      location_sd = sd(avg_location_angle_abs_deviation, na.rm = TRUE),
-      syn_num_types_mean = mean(syn_num_types, na.rm = TRUE),
-      syn_num_types_sd = sd(syn_num_types, na.rm = TRUE),
-      .groups = "drop"
-    )
-  print(summary_stats_syn)
-  
-  # Correlation between syn_num_types and performance (collapsed across load)
-  cat("\n=== Correlations: syn_num_types with performance (collapsed across load) ===\n")
-  syn_for_cor <- syn_only_clean %>%
-    group_by(participant_id) %>%
-    summarise(
-      syn_num_types = first(syn_num_types),
-      avg_colour = mean(avg_colour_angle_abs_deviation),
-      avg_location = mean(avg_location_angle_abs_deviation),
-      .groups = "drop"
-    )
-  
-  colour_cor <- cor(syn_for_cor$syn_num_types, syn_for_cor$avg_colour, use = "complete.obs")
-  location_cor <- cor(syn_for_cor$syn_num_types, syn_for_cor$avg_location, use = "complete.obs")
-  
-  cat("Correlation between syn_num_types and colour deviation:", round(colour_cor, 3), "\n")
-  cat("Correlation between syn_num_types and location deviation:", round(location_cor, 3), "\n")
-}
-
-# ===============================================================================
 # FINAL SUMMARY
 # ===============================================================================
 
@@ -321,19 +255,14 @@ cat("\n\n=======================================================================
 cat("=== FINAL SUMMARY ===\n")
 cat("================================================================================\n")
 
-cat("Main analysis: 2 groups (synaesthete vs control) × 3 loads (1, 3, 5)\n")
+cat(
+  if (include_relatives)
+    "Main analysis: 3 groups (synaesthete vs relative vs control) × 3 loads (1, 3, 5)\n"
+  else
+    "Main analysis: 2 groups (synaesthete vs control) × 3 loads (1, 3, 5)\n"
+)
 cat("Total observations in main analysis:", nrow(z_score_data), "\n")
 cat("Unique participants in main analysis:", length(unique(z_score_data$participant_id)), "\n")
-
-if (run_syn_covariate_analysis && !is.null(syn_types_data)) {
-  cat("Separate synaesthete covariate analysis: YES\n")
-  if (exists("syn_only_clean")) {
-    cat("Total observations in synaesthete analysis:", nrow(syn_only_clean), "\n")
-    cat("Unique participants in synaesthete analysis:", length(unique(syn_only_clean$participant_id)), "\n")
-  }
-} else {
-  cat("Separate synaesthete covariate analysis: NO\n")
-}
 
 # --- Per-load one-way ANOVAs: Syns vs Controls (for robustness check compatibility) ---
 for (ld in c(1, 3, 5)) {

@@ -1,4 +1,4 @@
-# Synaesthesia, Visual Perception, and Memory - Analysis Code
+# Synaesthesia, Visual Perception, and Memory
 
 R code accompanying the Stage 2 Registered Report:
 

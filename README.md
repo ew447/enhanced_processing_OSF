@@ -15,7 +15,7 @@ Minimally-processed CSVs, including participants who were later excluded
 The Lab.js experiment code used to collect the data is also hosted at
 <https://github.com/ew447/enhanced_processing_OSF/tree/main/experiments>.
 
-The preprint of the manuscript is available here: <https://zenodo.org/records/20060879>
+The preprint of the manuscript is available here: <https://zenodo.org/records/20060879>.
 The data is available here: <https://osf.io/pjb6e>
 
 ---

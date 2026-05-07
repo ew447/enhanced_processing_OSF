@@ -9,8 +9,8 @@ R code accompanying the Stage 2 Registered Report:
 This repository contains the scripts needed to reproduce the results reported
 in the manuscript (model-free ANOVAs and regressions, Bayes factors,
 mixture-model fits, Mahalanobis D, and Random Forest classification).
-Minimally-processed CSVs — including participants who were later excluded
-(one per task per group) — are deposited as data on OSF.
+Minimally-processed CSVs, including participants who were later excluded
+(one per task per group), are deposited as data on OSF.
 
 The Lab.js experiment code used to collect the data is hosted separately at
 <https://github.com/ew447/enhanced_processing_OSF/tree/main/experiments>.
